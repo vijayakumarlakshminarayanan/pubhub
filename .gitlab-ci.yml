@@ -1,0 +1,53 @@
+image: python:3.7
+
+before_script:
+  - python --version
+  - pip install --extra-index-url="http://10.241.18.83:8080" --trusted-host="10.241.18.83" -r requirements.txt
+
+stages:
+  - Static Analysis
+  - Testing
+  - Deployment
+
+flake8:
+  stage: Static Analysis
+  script:
+    - flake8 --max-line-length=80 app/ test/
+
+pytest:
+  stage: Testing
+  tags:
+    - dev-vpc
+  script:
+    - pytest -vv -x -p no:warnings
+
+deploy_dev:
+  stage: Deployment
+  only:
+    - dev
+  retry: 2
+  before_script:
+    - pip install awsebcli
+    - export AWS_ACCESS_KEY_ID=$AWS_CICD_KEY
+    - export AWS_SECRET_ACCESS_KEY=$AWS_CICD_SECRET
+  script:
+    - eb init Pubhub-dev -r us-west-2 -p docker
+    - eb use Pubhub
+    - eb config --cfg pubhub-dev-alb-stable
+    - eb deploy Pubhub -l Pubhub-$CI_COMMIT_SHA -v 
+
+deploy_prod:
+  stage: Deployment
+  only:
+    - prod
+  when: "manual"
+  retry: 2
+  before_script:
+    - pip install awsebcli
+    - export AWS_ACCESS_KEY_ID=$AWS_CICD_KEY
+    - export AWS_SECRET_ACCESS_KEY=$AWS_CICD_SECRET
+  script:
+    - eb init Pubhub-dev -r us-west-2 -p docker
+    - eb use Pubhub-production
+    - eb config --cfg pubhub-alb-stable
+    - eb deploy Pubhub-production -l Pubhub-$CI_COMMIT_SHA -v 
